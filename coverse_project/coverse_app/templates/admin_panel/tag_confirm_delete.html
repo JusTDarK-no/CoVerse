@@ -1,0 +1,17 @@
+<!-- templates/admin_panel/tag_confirm_delete.html -->
+{% extends 'admin_panel/base.html' %}
+
+{% block admin_title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="alert alert-danger">
+    <p>Вы уверены, что хотите удалить тег <strong>«{{ object.name }}»</strong>?</p>
+    <p>Это действие повлияет на {{ object.projects.count }} проектов.</p>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Да, удалить</button>
+    <a href="{% url 'admin_panel:admin_tags' %}" class="btn btn-secondary">Отмена</a>
+</form>
+{% endblock %}

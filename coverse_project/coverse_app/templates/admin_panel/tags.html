@@ -1,0 +1,42 @@
+<!-- templates/admin_panel/tags.html -->
+{% extends 'admin_panel/base.html' %}
+
+{% block admin_title %}Управление тегами{% endblock %}
+
+{% block admin_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Теги</h2>
+    <a href="{% url 'admin_panel:tag_create' %}" class="btn btn-primary">+ Создать тег</a>
+</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Название</th>
+            <th>Slug</th>
+            <th>Проектов с тегом</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for tag in tags %}
+        <tr>
+            <td>{{ tag.id }}</td>
+            <td>{{ tag.name }}</td>
+            <td><code>{{ tag.slug }}</code></td>
+            <td>{{ tag.projects.count }}</td>
+            <td>
+                <a href="{% url 'admin_panel:tag_update' tag.pk %}" class="btn btn-sm btn-outline-secondary">Изменить</a>
+                <a href="{% url 'admin_panel:tag_delete' tag.pk %}" class="btn btn-sm btn-outline-danger"
+                   onclick="return confirm('Удалить тег «{{ tag.name }}»? Это повлияет на {{ tag.projects.count }} проектов.')">
+                    Удалить
+                </a>
+            </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">Нет тегов</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

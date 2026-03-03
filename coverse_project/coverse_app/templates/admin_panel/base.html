@@ -1,0 +1,17 @@
+<!-- templates/admin_panel/base.html -->
+{% extends 'coverse_app/base.html' %}
+
+{% block content %}
+<div class="container py-3">
+    <div class="btn-group mb-3" role="group">
+        <a href="{% url 'admin_panel:admin_projects' %}" class="btn btn-outline-primary">Проекты</a>
+        <a href="{% url 'admin_panel:admin_users' %}" class="btn btn-outline-primary">Пользователи</a>
+        <a href="{% url 'admin_panel:admin_tags' %}" class="btn btn-outline-primary">Теги</a>
+        <a href="{% url 'admin_panel:admin_moderation_log' %}" class="btn btn-outline-primary">Лог модерации</a>
+        <a href="{% url 'coverse_app:project_list' %}" class="btn btn-outline-secondary">← На сайт</a>
+    </div>
+
+    <h1>{% block admin_title %}Администрирование{% endblock %}</h1>
+    {% block admin_content %}{% endblock %}
+</div>
+{% endblock %}

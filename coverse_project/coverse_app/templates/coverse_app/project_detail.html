@@ -1,0 +1,66 @@
+<!-- templates/coverse_app/project_detail.html -->
+{% extends 'coverse_app/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>{{ project.title }}</h1>
+
+    {% if project.moderation_status == 'hidden_by_moderation' %}
+        <div class="alert alert-warning">
+            ⚠️ Этот проект был скрыт модерацией {{ project.moderation_hidden_at|date:"d.m.Y H:i" }}.
+            {% if user == project.author %}
+                Вы можете редактировать его, но он недоступен другим пользователям.
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <p><strong>Статус:</strong> {{ project.get_status_display }}</p>
+    {% if project.privacy != 'public' %}
+        <span class="badge bg-secondary">Приватный</span>
+    {% endif %}
+
+    <p>{{ project.description }}</p>
+
+    {% if project.cover_image %}
+        <img src="{{ project.cover_image.url }}" class="img-fluid mb-3" alt="{{ project.title }}">
+    {% endif %}
+
+    <h2>Разделы</h2>
+
+    {% if user == project.author %}
+        <a href="{% url 'coverse_app:section_create' project.pk %}" class="btn btn-primary mb-3">+ Добавить раздел</a>
+    {% endif %}
+
+    {% if sections %}
+        <div class="list-group">
+            {% for section in sections %}
+                <a href="{% url 'coverse_app:section_detail' section.pk %}" class="list-group-item list-group-item-action">
+                    <div class="d-flex justify-content-between">
+                        <strong>{{ section.get_section_type_display }}: {{ section.title }}</strong>
+                        <span class="badge bg-info">{{ section.posts.count }} постов</span>
+                    </div>
+                    {% if section.description %}
+                        <small class="text-muted">{{ section.description|truncatewords:20 }}</small>
+                    {% else %}
+                        <small class="text-muted">Без описания</small>
+                    {% endif %}
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-muted">Разделов пока нет.</p>
+    {% endif %}
+
+    <!-- Кнопка модерации (только для администратора) -->
+    {% if user.is_superuser and project.moderation_status == 'active' %}
+        <div class="mt-4">
+            <a href="{% url 'admin_panel:hide_project_with_reason' project.id %}"
+               class="btn btn-danger">
+                🚫 Скрыть проект (модерация)
+            </a>
+        </div>
+    {% endif %}
+
+    <a href="{% url 'coverse_app:project_list' %}" class="btn btn-secondary mt-3">← Назад к проектам</a>
+</div>
+{% endblock %}

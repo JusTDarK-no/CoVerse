@@ -1,0 +1,43 @@
+<!-- templates/admin_panel/moderation_form.html -->
+{% extends 'coverse_app/base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h4 class="mb-0">{{ title }}</h4>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="{{ action_url }}">
+                        {% csrf_token %}
+
+                        <div class="mb-3">
+                            <label for="{{ form.reason.id_for_label }}" class="form-label">
+                                {{ form.reason.label }}
+                            </label>
+                            {{ form.reason }}
+                            {% if form.reason.errors %}
+                                <div class="text-danger mt-1">
+                                    {% for error in form.reason.errors %}
+                                        {{ error }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                            <div class="form-text">Обязательно укажите причину. Это поможет автору понять, что нужно исправить.</div>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ cancel_url }}" class="btn btn-secondary">Отмена</a>
+                            <button type="submit" class="btn btn-danger">Подтвердить</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

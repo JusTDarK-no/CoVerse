@@ -1,0 +1,115 @@
+<!-- templates/coverse_app/section_detail.html -->
+{% extends 'coverse_app/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_list' %}">Проекты</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_detail' project.pk %}">{{ project.title }}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ section.get_section_type_display }}: {{ section.title }}</li>
+        </ol>
+    </nav>
+
+    <h2>{{ section.get_section_type_display }}: {{ section.title }}</h2>
+
+    {% if section.description %}
+        <p class="lead">{{ section.description }}</p>
+    {% endif %}
+
+    {% if can_edit %}
+        <a href="{% url 'coverse_app:post_create' section.pk %}" class="btn btn-primary mb-3">+ Добавить пост</a>
+    {% endif %}
+
+    {% if posts %}
+        <div class="list-group">
+            {% for post in posts %}
+                <div class="list-group-item">
+                    {% if post.is_deleted or post.moderation_deleted %}
+                        <div class="alert alert-secondary">
+                            <h5>{{ post.title|default:"Без заголовка" }}</h5>
+                            {% if post.is_deleted %}
+                                <p class="mb-0">🗑️ Этот пост был удалён автором.</p>
+                            {% elif post.moderation_deleted %}
+                                <p class="mb-0">🚫 Этот пост был скрыт модерацией.</p>
+                            {% endif %}
+                            <small>Опубликовано: {{ post.created_at|date:"d.m.Y H:i" }}
+                                {% if post.deleted_at %}
+                                    • Удалён: {{ post.deleted_at|date:"d.m.Y H:i" }}
+                                {% endif %}
+                                {% if post.moderation_deleted_at %}
+                                    • Скрыт модерацией: {{ post.moderation_deleted_at|date:"d.m.Y H:i" }}
+                                {% endif %}
+                            </small>
+                        </div>
+                    {% else %}
+                        <h5>{{ post.title|default:"Без заголовка" }}</h5>
+                        <div class="mb-3">{{ post.content|linebreaks }}</div>
+
+                        {% if post.images.exists %}
+                            <div class="row">
+                                {% for img in post.images.all %}
+                                    <div class="col-md-4 mb-3">
+                                        <img src="{{ img.image.url }}" class="img-fluid" alt="Изображение">
+                                        {% if img.caption %}
+                                            <small class="text-muted d-block mt-1">{{ img.caption }}</small>
+                                        {% endif %}
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        <small class="text-muted">Опубликовано: {{ post.created_at|date:"d.m.Y H:i" }}</small>
+
+                        <!-- Кнопка комментариев (всегда видна для аутентифицированных пользователей) -->
+                        <div class="mt-2">
+                            {% if user.is_authenticated %}
+                                <a href="{% url 'coverse_app:post_comments' post.pk %}"
+                                   class="btn btn-sm btn-outline-info">
+                                    💬 Комментарии ({{ post.comments.count }})
+                                    {% if post.comments.count == 0 %}
+                                        <span class="ms-2">+ Оставить комментарий</span>
+                                    {% endif %}
+                                </a>
+                            {% else %}
+                                <span class="btn btn-sm btn-outline-info disabled">
+                                    💬 Комментарии ({{ post.comments.count }})
+                                </span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Кнопка модерации (только для администратора) -->
+                        {% if user.is_superuser %}
+                            <div class="mt-2">
+                                <a href="{% url 'admin_panel:hide_post_with_reason' post.id %}"
+                                   class="btn btn-sm btn-danger">
+                                    🚫 Скрыть пост
+                                </a>
+                            </div>
+                        {% endif %}
+                    {% endif %}
+
+                    {% if can_edit and not post.is_deleted and not post.moderation_deleted %}
+                        <form method="post" action="{% url 'coverse_app:post_delete' post.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    onclick="return confirm('Удалить пост?')">
+                                Удалить пост
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            В этом разделе пока нет опубликованных постов.
+            {% if can_edit %}
+                <a href="{% url 'coverse_app:post_create' section.pk %}" class="btn btn-primary mt-2">Создать первый пост</a>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <a href="{% url 'coverse_app:project_detail' project.pk %}" class="btn btn-secondary mt-3">← Назад к проекту</a>
+</div>
+{% endblock %}

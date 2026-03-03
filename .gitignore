@@ -1,0 +1,78 @@
+# =============================================================================
+# CoVerse Project .gitignore
+# =============================================================================
+
+# --- Python ---
+# Скомпилированные файлы байт-кода
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual Environment ---
+# Директории виртуального окружения
+venv/
+ENV/
+env/
+.venv/
+.env/
+
+# --- IDE & Editors ---
+# Настройки сред разработки
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# --- Django / Project Specific ---
+# Лог-файлы
+*.log
+
+# Локальные настройки и секретные ключи
+local_settings.py
+secret_key.py
+settings_local.py
+
+# Переменные окружения (конфиденциальные данные)
+.env
+.env.local
+.env.production
+.env.development
+
+# --- Database ---
+# Файлы базы данных SQLite (для локальной разработки)
+db.sqlite3
+db.sqlite3-journal
+
+# --- Media & Static ---
+# Пользовательский медиа-контент (загрузки)
+media/
+user_uploads/
+
+# Статические файлы, собранные для production
+staticfiles/
+static_root/
+
+# --- Operating System ---
+# Системные файлы macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Системные файлы Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Builds & Archives ---
+*.tar.gz
+*.rar
+*.zip
+dist/
+build/

@@ -1,0 +1,46 @@
+<!-- templates/admin_panel/users.html -->
+{% extends 'admin_panel/base.html' %}
+
+{% block admin_title %}Пользователи{% endblock %}
+
+{% block admin_content %}
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Имя</th>
+            <th>Email</th>
+            <th>Дата регистрации</th>
+            <th>Проектов</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in users %}
+        <tr>
+            <td>{{ user.id }}</td>
+            <td>{{ user.username }}</td>
+            <td>{{ user.email|default:"—" }}</td>
+            <td>{{ user.date_joined|date:"d.m.Y" }}</td>
+            <td>{{ user.owned_projects.count }}</td>
+            <td>
+                {% if user.profile.is_blocked %}
+                    <a href="{% url 'admin_panel:unblock_user' user.id %}"
+                       class="btn btn-sm btn-success"
+                       onclick="return confirm('Разблокировать пользователя {{ user.username }}?')">
+                        Разблокировать
+                    </a>
+                {% else %}
+                    <a href="{% url 'admin_panel:block_user_with_reason' user.id %}"
+                       class="btn btn-sm btn-danger">
+                        Заблокировать
+                    </a>
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6">Нет пользователей</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

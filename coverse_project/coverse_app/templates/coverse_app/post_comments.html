@@ -1,0 +1,98 @@
+<!-- templates/coverse_app/post_comments.html -->
+{% extends 'coverse_app/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_list' %}">Проекты</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_detail' project.pk %}">{{ project.title }}</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'coverse_app:section_detail' section.pk %}">{{ section.get_section_type_display }}: {{ section.title }}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ post.title|default:"Без названия" }}</li>
+        </ol>
+    </nav>
+
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h2 class="mb-0">{{ post.title|default:"Без названия" }}</h2>
+        </div>
+        <div class="card-body">
+            {{ post.content|linebreaks }}
+
+            {% if post.images.exists %}
+                <div class="row mt-3">
+                    {% for img in post.images.all %}
+                        <div class="col-md-4 mb-3">
+                            <img src="{{ img.image.url }}" class="img-fluid" alt="Изображение">
+                            {% if img.caption %}
+                                <small class="text-muted d-block mt-1">{{ img.caption }}</small>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header bg-light">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Комментарии ({{ comments.count }})</h4>
+                {% if user.is_authenticated %}
+                    <button class="btn btn-sm btn-primary" onclick="toggleMainCommentForm()">
+                        + Новый комментарий
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-body">
+            <!-- Форма основного комментария (изначально скрыта) -->
+            <div id="main-comment-form" class="mb-4 d-none">
+                <form method="post" action="{% url 'coverse_app:comment_create' post.pk %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Новый комментарий</label>
+                        <textarea name="content" rows="4" class="form-control"
+                                  placeholder="Напишите комментарий..." required></textarea>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">Отправить</button>
+                        <button type="button" class="btn btn-secondary" onclick="toggleMainCommentForm()">
+                            Отмена
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            {% if comments %}
+                <div class="list-group">
+                    {% for comment in comments %}
+                        <div class="list-group-item">
+                            {% include 'coverse_app/comment_item.html' with comment=comment %}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="alert alert-info">
+                    Пока нет комментариев. Будьте первым!
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <a href="{% url 'coverse_app:section_detail' section.pk %}" class="btn btn-secondary mt-3">
+        ← Назад к разделу
+    </a>
+</div>
+
+<script>
+function toggleMainCommentForm() {
+    const form = document.getElementById('main-comment-form');
+    if (form.classList.contains('d-none')) {
+        form.classList.remove('d-none');
+    } else {
+        form.classList.add('d-none');
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,41 @@
+<!-- admin_panel/dashboard.html -->
+{% extends 'admin_panel/base.html' %}
+
+{% block admin_title %}Панель администрирования{% endblock %}
+
+{% block admin_content %}
+<div class="row">
+    <div class="col-md-3">
+        <div class="card text-bg-primary mb-3">
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.total_users }}</h5>
+                <p class="card-text">Пользователей</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-success mb-3">
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.total_projects }}</h5>
+                <p class="card-text">Проектов</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-info mb-3">
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.public_projects }}</h5>
+                <p class="card-text">Публичных</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-warning mb-3">
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.new_suggestions }}</h5>
+                <p class="card-text">Новых предложений</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

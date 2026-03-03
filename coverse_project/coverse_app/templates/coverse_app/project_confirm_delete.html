@@ -1,0 +1,6 @@
+<form method="post">
+    {% csrf_token %}
+    <p>Вы уверены, что хотите удалить "{{ object.title }}"?</p>
+    <button type="submit">Да, удалить</button>
+    <a href="{% url 'coverse_app:my_projects' %}">Отмена</a>
+</form>

@@ -1,0 +1,38 @@
+<!-- admin_panel/suggestions.html -->
+{% extends 'admin_panel/base.html' %}
+
+{% block admin_title %}Модерация предложений{% endblock %}
+
+{% block admin_content %}
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Автор</th>
+            <th>Пост</th>
+            <th>Текст</th>
+            <th>Статус</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for suggestion in suggestions %}
+        <tr>
+            <td>{{ suggestion.id }}</td>
+            <td>{{ suggestion.author.username }}</td>
+            <td><a href="{% url 'coverse_app:section_detail' suggestion.post.section.pk %}">Пост #{{ suggestion.post.id }}</a></td>
+            <td>{{ suggestion.suggestion_text|truncatechars:50 }}</td>
+            <td>{{ suggestion.get_status_display }}</td>
+            <td>
+                <a href="{% url 'admin_panel:delete_post_moderation' suggestion.post.id %}" class="btn btn-sm btn-danger"
+                   onclick="return confirm('Скрыть пост модерацией?')">
+                    Скрыть пост
+                </a>
+            </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6">Нет предложений</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
