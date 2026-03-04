@@ -5,6 +5,7 @@ from django.urls import reverse
 from django.utils.text import slugify
 from django.core.exceptions import ValidationError
 import os
+from django.utils import timezone
 
 # ————————————————————————————————————————————————
 # ПОМОЩНИКИ / УТИЛИТЫ
@@ -221,60 +222,6 @@ class Post(models.Model):
         self.save(update_fields=['is_deleted', 'deleted_at'])
 
 
-class Suggestion(models.Model):
-    """Предложение от участника для улучшения поста"""
-    VISIBILITY_CHOICES = [
-        ('author_only', 'Только автору'),
-        ('public', 'Публичное'),
-    ]
-    STATUS_CHOICES = [
-        ('new', 'Новое'),
-        ('reviewed', 'Рассмотрено'),
-        ('accepted', 'Принято'),
-        ('rejected', 'Отклонено'),
-    ]
-
-    post = models.ForeignKey(
-        Post,
-        on_delete=models.CASCADE,
-        related_name='suggestions',
-        verbose_name="Пост"
-    )
-    author = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='suggestions_made',
-        verbose_name="Автор предложения"
-    )
-    original_excerpt = models.TextField(
-        blank=True,
-        verbose_name="Цитата из поста (для контекста)"
-    )
-    suggestion_text = models.TextField(verbose_name="Предложение")
-    visibility = models.CharField(
-        max_length=20,
-        choices=VISIBILITY_CHOICES,
-        default='public',
-        verbose_name="Видимость"
-    )
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='new',
-        verbose_name="Статус"
-    )
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
-    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name="Рассмотрен")
-
-    class Meta:
-        ordering = ['-created_at']
-        verbose_name = "Предложение"
-        verbose_name_plural = "Предложения"
-
-    def __str__(self):
-        return f"Предложение от {self.author.username} к «{self.post.section.project.title}»"
-
-
 class ContributionCredit(models.Model):
     """Фиксация вклада участника в проект (соавторство, иллюстрация и т.д.)"""
     CREDIT_TYPE_CHOICES = [
@@ -482,3 +429,182 @@ class Comment(models.Model):
     def is_truncated(self):
         """Проверяет, нужно ли обрезать комментарий"""
         return len(self.content) > 200
+
+class Suggestion(models.Model):
+    """Предложение от участника для улучшения поста"""
+    VISIBILITY_CHOICES = [
+        ('author_only', 'Только автору'),
+        ('public', 'Публичное'),
+    ]
+    STATUS_CHOICES = [
+        ('new', 'Новое'),
+        ('reviewed', 'Рассмотрено'),
+        ('accepted', 'Принято'),
+        ('rejected', 'Отклонено'),
+    ]
+    SUGGESTION_TYPE_CHOICES = [
+        ('correction', 'Исправление'),
+        ('new_idea', 'Новая идея'),
+        ('other', 'Другое'),
+    ]
+
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name='suggestions',
+        verbose_name="Пост"
+    )
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='suggestions_made',
+        verbose_name="Автор предложения"
+    )
+    original_excerpt = models.TextField(
+        blank=True,
+        verbose_name="Цитата из поста (для контекста)"
+    )
+    suggestion_text = models.TextField(verbose_name="Предложение")
+    suggestion_type = models.CharField(
+        max_length=20,
+        choices=SUGGESTION_TYPE_CHOICES,
+        default='other',
+        verbose_name="Тип предложения"
+    )
+    visibility = models.CharField(
+        max_length=20,
+        choices=VISIBILITY_CHOICES,
+        default='public',
+        verbose_name="Видимость"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='new',
+        verbose_name="Статус"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    read_at = models.DateTimeField(null=True, blank=True, verbose_name="Прочитано автором")
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name="Рассмотрено")
+    rejection_reason = models.TextField(
+        blank=True,
+        verbose_name="Причина отказа"
+    )
+    accepted_post_version = models.ForeignKey(
+        'PostEditLog',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='accepted_suggestions',
+        verbose_name="Версия поста после принятия"
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Предложение"
+        verbose_name_plural = "Предложения"
+
+    def __str__(self):
+        return f"Предложение от {self.author.username} к «{self.post.section.project.title}»"
+
+    def mark_as_read(self):
+        """Отметить предложение как прочитанное"""
+        if not self.read_at:
+            self.read_at = timezone.now()
+            self.save(update_fields=['read_at'])
+
+    def can_view_by_user(self, user):
+        """Проверка доступа к предложению"""
+        if self.visibility == 'public':
+            return True
+        post_author = self.post.section.project.author
+        return user == post_author or user == self.author
+
+class SuggestionAttachment(models.Model):
+    """Файлы, прикреплённые к предложению"""
+    suggestion = models.ForeignKey(
+        'Suggestion',
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        verbose_name="Предложение"
+    )
+    file = models.FileField(
+        upload_to='suggestions/',
+        verbose_name="Файл"
+    )
+    file_type = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="Тип файла"
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name="Загружен")
+
+    class Meta:
+        ordering = ['uploaded_at']
+        verbose_name = "Вложение к предложению"
+        verbose_name_plural = "Вложения к предложениям"
+
+    def __str__(self):
+        return f"Вложение {self.id} к предложению {self.suggestion.id}"
+
+    def save(self, *args, **kwargs):
+        if self.file:
+            ext = os.path.splitext(self.file.name)[1].lower()
+            self.file_type = ext
+        super().save(*args, **kwargs)
+
+
+class PostEditLog(models.Model):
+    """Лог изменений поста (для отслеживания вклада)"""
+    post = models.ForeignKey(
+        'Post',
+        on_delete=models.CASCADE,
+        related_name='edit_logs',
+        verbose_name="Пост"
+    )
+    editor = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='post_edits',
+        verbose_name="Редактор"
+    )
+    suggestion = models.ForeignKey(
+        'Suggestion',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='post_edit_logs',
+        verbose_name="Предложение (инициатор)"
+    )
+    old_content = models.TextField(
+        verbose_name="Старое содержание",
+        editable=False
+    )
+    new_content = models.TextField(
+        verbose_name="Новое содержание",
+        editable=False
+    )
+    old_title = models.CharField(
+        max_length=200,
+        verbose_name="Старый заголовок",
+        editable=False
+    )
+    new_title = models.CharField(
+        max_length=200,
+        verbose_name="Новый заголовок",
+        editable=False
+    )
+    edited_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата изменения")
+    change_summary = models.TextField(
+        blank=True,
+        verbose_name="Описание изменений"
+    )
+
+    class Meta:
+        ordering = ['-edited_at']
+        verbose_name = "Лог изменения поста"
+        verbose_name_plural = "Логи изменений постов"
+
+    def __str__(self):
+        return f"Изменение поста #{self.post.id} от {self.edited_at}"
+

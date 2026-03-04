@@ -22,6 +22,16 @@
                     <div class="mt-auto">
                         <a href="{% url 'coverse_app:project_detail' project.pk %}" class="btn btn-primary btn-sm">Открыть</a>
                         <a href="{% url 'coverse_app:project_update' project.pk %}" class="btn btn-outline-secondary btn-sm ms-2">Редактировать</a>
+
+                        <!-- Кнопка предложений -->
+                        <a href="{% url 'coverse_app:project_suggestions' project.pk %}"
+                           class="btn btn-outline-success btn-sm ms-2">
+                            📬 Предложения
+                            {% if project.new_suggestions_count > 0 %}
+                                <span class="badge bg-danger">{{ project.new_suggestions_count }}</span>
+                            {% endif %}
+                        </a>
+
                         <!-- Кнопка "Удалить" -->
                         <button type="button" class="btn btn-danger btn-sm ms-2" data-bs-toggle="modal" data-bs-target="#deleteModal{{ project.pk }}">
                             Удалить

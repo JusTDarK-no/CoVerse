@@ -1,10 +1,142 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
-</head>
-<body>
-$END$
-</body>
-</html>
+{% extends 'coverse_app/base.html' %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_list' %}">Проекты</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_detail' post.section.project.pk %}">
+            {{ post.section.project.title }}
+        </a></li>
+        <li class="breadcrumb-item">
+            <a href="{% url 'coverse_app:post_detail' post.pk %}">{{ post.title|default:"Пост" }}</a>
+        </li>
+        <li class="breadcrumb-item active">Предложения</li>
+    </ol>
+</nav>
+
+<h2>📋 Предложения к посту: {{ post.title|default:"Без названия" }}</h2>
+
+<!-- Фильтры -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <form method="get" class="d-flex gap-2">
+            <select name="status" class="form-select" onchange="this.form.submit()">
+                <option value="">Все статусы</option>
+                {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>
+                        {{ label }}
+                    </option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="type" value="{{ current_type }}">
+            <input type="hidden" name="sort" value="{{ current_sort }}">
+        </form>
+    </div>
+    <div class="col-md-4">
+        <form method="get" class="d-flex gap-2">
+            <select name="type" class="form-select" onchange="this.form.submit()">
+                <option value="">Все типы</option>
+                {% for value, label in suggestion_types %}
+                    <option value="{{ value }}" {% if current_type == value %}selected{% endif %}>
+                        {{ label }}
+                    </option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="status" value="{{ current_status }}">
+            <input type="hidden" name="sort" value="{{ current_sort }}">
+        </form>
+    </div>
+    <div class="col-md-4">
+        <form method="get" class="d-flex gap-2">
+            <select name="sort" class="form-select" onchange="this.form.submit()">
+                <option value="-created_at" {% if current_sort == '-created_at' %}selected{% endif %}>
+                    Новые сначала
+                </option>
+                <option value="created_at" {% if current_sort == 'created_at' %}selected{% endif %}>
+                    Старые сначала
+                </option>
+            </select>
+            <input type="hidden" name="status" value="{{ current_status }}">
+            <input type="hidden" name="type" value="{{ current_type }}">
+        </form>
+    </div>
+</div>
+
+<!-- Активные фильтры -->
+{% if current_status or current_type %}
+    <div class="alert alert-info d-flex justify-content-between align-items-center">
+        <div>
+            {% if current_status %}
+                <span class="badge bg-primary me-2">Статус: {{ current_status }}</span>
+            {% endif %}
+            {% if current_type %}
+                <span class="badge bg-secondary me-2">Тип: {{ current_type }}</span>
+            {% endif %}
+        </div>
+        <a href="{% url 'coverse_app:post_suggestions_list' post.pk %}" class="btn btn-sm btn-outline-secondary">
+            Сбросить фильтры
+        </a>
+    </div>
+{% endif %}
+
+{% if suggestions %}
+    <div class="list-group">
+    {% for suggestion in suggestions %}
+        <div class="list-group-item">
+            <div class="d-flex w-100 justify-content-between">
+                <div>
+                    <h5 class="mb-1">
+                        {% if suggestion.suggestion_type == 'correction' %}
+                            <span class="badge bg-warning text-dark">Исправление</span>
+                        {% elif suggestion.suggestion_type == 'new_idea' %}
+                            <span class="badge bg-success">Новая идея</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Другое</span>
+                        {% endif %}
+                    </h5>
+                    <p class="mb-1">{{ suggestion.suggestion_text|truncatechars:200 }}</p>
+                    <small class="text-muted">
+                        Автор: {{ suggestion.author.username }} •
+                        {{ suggestion.created_at|date:"d.m.Y H:i" }}
+                        {% if suggestion.attachments.exists %}
+                            • 📎 {{ suggestion.attachments.count }}
+                        {% endif %}
+                    </small>
+                </div>
+                <div>
+                    {% if suggestion.status == 'accepted' %}
+                        <span class="badge bg-success">✓ Принято</span>
+                    {% elif suggestion.status == 'rejected' %}
+                        <span class="badge bg-danger">✗ Отклонено</span>
+                    {% elif suggestion.status == 'new' %}
+                        <span class="badge bg-info">На рассмотрении</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ suggestion.get_status_display }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% if suggestion.status == 'rejected' and suggestion.rejection_reason %}
+                <div class="mt-2 alert alert-danger py-1">
+                    <small><strong>Причина отказа:</strong> {{ suggestion.rejection_reason|truncatechars:100 }}</small>
+                </div>
+            {% endif %}
+        </div>
+    {% endfor %}
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        К этому посту пока нет предложений с выбранными фильтрами.
+        {% if user.is_authenticated and user != post.section.project.author %}
+            <a href="{% url 'coverse_app:suggestion_create' post.pk %}" class="btn btn-success mt-2">
+                Будьте первым!
+            </a>
+        {% endif %}
+    </div>
+{% endif %}
+
+<div class="mt-4">
+    <a href="{% url 'coverse_app:post_detail' post.pk %}" class="btn btn-secondary">
+        ← Назад к посту
+    </a>
+</div>
+{% endblock %}

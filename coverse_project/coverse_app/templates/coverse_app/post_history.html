@@ -1,10 +1,146 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
-</head>
-<body>
-$END$
-</body>
-</html>
+{% extends 'coverse_app/base.html' %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'coverse_app:my_projects' %}">Мои проекты</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_detail' project.pk %}">{{ project.title }}</a></li>
+        <li class="breadcrumb-item">
+            <a href="{% url 'coverse_app:section_detail' post.section.pk %}">
+                {{ post.section.get_section_type_display }}: {{ post.section.title }}
+            </a>
+        </li>
+        <li class="breadcrumb-item">
+            <a href="{% url 'coverse_app:post_detail' post.pk %}">{{ post.title|default:"Пост" }}</a>
+        </li>
+        <li class="breadcrumb-item active">История изменений</li>
+    </ol>
+</nav>
+
+<h1>📜 История изменений поста</h1>
+<p class="text-muted">{{ post.title|default:"Без названия" }}</p>
+
+{% if edit_logs %}
+    <div class="timeline">
+        {% for log in edit_logs %}
+            <div class="card mb-3 {% if forloop.first %}border-success{% endif %}">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>
+                            {% if forloop.first %}
+                                ✅ Текущая версия
+                            {% else %}
+                                📝 Версия #{{ forloop.counter }}
+                            {% endif %}
+                        </strong>
+                        <span class="text-muted ms-2">
+                            {{ log.edited_at|date:"d.m.Y H:i" }}
+                        </span>
+                    </div>
+                    <span class="badge bg-primary">
+                        Редактор: {{ log.editor.username }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    {% if log.suggestion %}
+                        <div class="alert alert-info">
+                            <strong>💡 Инициатор изменения:</strong> 
+                            {{ log.suggestion.author.username }}
+                            <br>
+                            <strong>Тип предложения:</strong> 
+                            {{ log.suggestion.get_suggestion_type_display }}
+                            <br>
+                            {% if log.suggestion.original_excerpt %}
+                                <strong>Цитата:</strong> 
+                                <em>{{ log.suggestion.original_excerpt|truncatechars:100 }}</em>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+
+                    {% if log.change_summary %}
+                        <p><strong>Описание изменений:</strong> {{ log.change_summary }}</p>
+                    {% endif %}
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Заголовок:</h6>
+                            <div class="border p-2 bg-light">
+                                <del class="text-danger">{{ log.old_title|default:"(без названия)" }}</del>
+                                <br>
+                                <ins class="text-success">{{ log.new_title|default:"(без названия)" }}</ins>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <h6>Содержание:</h6>
+                        <div class="border p-2 bg-light">
+                            <details>
+                                <summary class="cursor-pointer">Показать изменения содержимого</summary>
+                                <div class="mt-2">
+                                    <strong>Было:</strong>
+                                    <div class="p-2 bg-danger bg-opacity-10 mb-2">
+                                        {{ log.old_content|truncatechars:500 }}
+                                    </div>
+                                    <strong>Стало:</strong>
+                                    <div class="p-2 bg-success bg-opacity-10">
+                                        {{ log.new_content|truncatechars:500 }}
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+
+                    {% if log.suggestion and log.suggestion.accepted_post_version == log %}
+                        <div class="mt-2">
+                            <span class="badge bg-success">✓ Предложение принято</span>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    <!-- Пагинация -->
+    {% if is_paginated %}
+        <nav aria-label="Пагинация" class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1">Первая</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">←</a>
+                    </li>
+                {% endif %}
+                
+                <li class="page-item active">
+                    <span class="page-link">{{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+                </li>
+                
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}">→</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Последняя</a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+{% else %}
+    <div class="alert alert-info">
+        У этого поста пока нет истории изменений.
+    </div>
+{% endif %}
+
+<div class="mt-4">
+    <a href="{% url 'coverse_app:post_detail' post.pk %}" class="btn btn-primary">
+        ← Назад к посту
+    </a>
+    <a href="{% url 'coverse_app:section_detail' post.section.pk %}" class="btn btn-secondary">
+        ← К разделу
+    </a>
+</div>
+{% endblock %}

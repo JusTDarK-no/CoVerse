@@ -1,4 +1,5 @@
 # coverse_app/views.py
+from django.db.models.functions import Coalesce
 from django.shortcuts import render
 from django.views.generic import ListView, DetailView, CreateView
 from django.urls import reverse_lazy
@@ -10,7 +11,7 @@ from django.db import models  # для Q
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, FileResponse
 from django.views.generic import View
 from .forms import PostForm
 from django.contrib.auth.decorators import user_passes_test
@@ -19,12 +20,37 @@ from django.contrib.auth.models import User
 from .models import Project, Suggestion
 from django.contrib import messages
 from .forms import *
-
-
-# coverse_app/views.py
-
+from django.db import connection
+from django.contrib.admin.views.decorators import staff_member_required
 from django.views.generic import UpdateView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+
+
+class RegisterView(CreateView):
+    form_class = CustomUserCreationForm
+    template_name = 'registration/register.html'
+    success_url = reverse_lazy('login')  # после регистрации — на вход
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['title'] = 'Регистрация'
+        return context
+
+class MyProjectsView(LoginRequiredMixin, ListView):
+    """Список проектов текущего пользователя"""
+    model = Project
+    template_name = 'coverse_app/my_projects.html'
+    context_object_name = 'projects'
+    paginate_by = 10
+
+    def get_queryset(self):
+        # Только проекты текущего пользователя
+        return Project.objects.filter(author=self.request.user).order_by('-created_at')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['title'] = 'Мои проекты'
+        return context
 
 class ProjectUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
     """Редактирование проекта (только автором)"""
@@ -43,8 +69,6 @@ class ProjectUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
         context['title'] = f'Редактировать «{self.object.title}»'
         return context
 
-
-# coverse_app/views.py
 
 class ProjectListView(ListView):
     model = Project
@@ -101,63 +125,99 @@ class ProjectCreateView(LoginRequiredMixin, CreateView):
         return context
 
 
-
-
 class ProjectDetailView(DetailView):
-    """Детали проекта"""
+    """Детали проекта + аналитика для автора (без БД-функций)"""
     model = Project
     template_name = 'coverse_app/project_detail.html'
     context_object_name = 'project'
 
     def get_queryset(self):
         queryset = Project.objects.select_related('author', 'author__profile')
-
         if self.request.user.is_authenticated:
             public_active = Q(privacy='public', moderation_status='active')
             own_hidden = Q(author=self.request.user, moderation_status='hidden_by_moderation')
             queryset = queryset.filter(public_active | own_hidden)
         else:
             queryset = queryset.filter(privacy='public', moderation_status='active')
-
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         project = self.object
         context['title'] = project.title
-        # Загружаем разделы с постами (оптимизация запросов)
         context['sections'] = project.sections.prefetch_related('posts').all()
-        return context
 
-from django.views.generic.edit import CreateView
-from django.contrib.auth.views import LoginView, LogoutView
-from django.urls import reverse_lazy
-from .forms import CustomUserCreationForm
+        # ← ИСПРАВЛЕНО: Статистика через ORM вместо БД-функции
+        if self.request.user.is_authenticated and (
+                self.request.user == project.author or self.request.user.is_superuser
+        ):
+            # Получаем все посты проекта
+            post_ids = Post.objects.filter(
+                section__project=project,
+                is_deleted=False,
+                moderation_deleted=False
+            ).values_list('id', flat=True)
 
-class RegisterView(CreateView):
-    form_class = CustomUserCreationForm
-    template_name = 'registration/register.html'
-    success_url = reverse_lazy('login')  # после регистрации — на вход
+            # Подсчёт предложений
+            total_suggestions = Suggestion.objects.filter(post__id__in=post_ids).count()
+            new_suggestions = Suggestion.objects.filter(
+                post__id__in=post_ids,
+                status='new'
+            ).count()
+            accepted_suggestions = Suggestion.objects.filter(
+                post__id__in=post_ids,
+                status='accepted'
+            ).count()
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['title'] = 'Регистрация'
-        return context
+            # Подсчёт комментариев
+            total_comments = Comment.objects.filter(
+                post__id__in=post_ids,
+                is_deleted=False
+            ).count()
 
-class MyProjectsView(LoginRequiredMixin, ListView):
-    """Список проектов текущего пользователя"""
-    model = Project
-    template_name = 'coverse_app/my_projects.html'
-    context_object_name = 'projects'
-    paginate_by = 10
+            # Уникальные участники (авторы постов + авторы предложений + комментаторы)
+            post_authors = Post.objects.filter(
+                id__in=post_ids
+            ).values_list('section__project__author_id', flat=True)
 
-    def get_queryset(self):
-        # Только проекты текущего пользователя
-        return Project.objects.filter(author=self.request.user).order_by('-created_at')
+            suggestion_authors = Suggestion.objects.filter(
+                post__id__in=post_ids
+            ).values_list('author_id', flat=True)
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['title'] = 'Мои проекты'
+            comment_authors = Comment.objects.filter(
+                post__id__in=post_ids,
+                is_deleted=False
+            ).values_list('author_id', flat=True)
+
+            all_contributors = set(post_authors) | set(suggestion_authors) | set(comment_authors)
+
+            # Последняя активность
+            last_post = Post.objects.filter(
+                id__in=post_ids
+            ).order_by('-created_at').first()
+            last_suggestion = Suggestion.objects.filter(
+                post__id__in=post_ids
+            ).order_by('-created_at').first()
+            last_comment = Comment.objects.filter(
+                post__id__in=post_ids,
+                is_deleted=False
+            ).order_by('-created_at').first()
+
+            last_activity = None
+            for item in [last_post, last_suggestion, last_comment]:
+                if item and (last_activity is None or item.created_at > last_activity):
+                    last_activity = item.created_at
+
+            context['engagement_stats'] = {
+                'total_posts': len(post_ids),
+                'total_suggestions': total_suggestions,
+                'new_suggestions': new_suggestions,
+                'accepted_suggestions': accepted_suggestions,
+                'total_comments': total_comments,
+                'unique_contributors': len(all_contributors),
+                'last_activity_at': last_activity,
+            }
+
         return context
 
 class ProjectDeleteView(LoginRequiredMixin, UserPassesTestMixin, DeleteView):
@@ -303,17 +363,59 @@ def superuser_required(view_func):
     """Декоратор: только суперпользователи"""
     return user_passes_test(lambda u: u.is_superuser)(view_func)
 
+
 @superuser_required
 def admin_dashboard(request):
-    """Главная страница админ-панели"""
-    stats = {
-        'total_users': User.objects.count(),
-        'total_projects': Project.objects.count(),
-        'public_projects': Project.objects.filter(privacy='public').count(),
-        'total_suggestions': Suggestion.objects.count(),
-        'new_suggestions': Suggestion.objects.filter(status='new').count(),
-    }
+    """Главная страница админ-панели с использованием БД функции"""
+    stats = {}
+
+    try:
+        with connection.cursor() as cursor:
+            # Вызов функции, возвращающей таблицу (одну строку)
+            cursor.execute("SELECT * FROM fn_get_admin_statistics()")
+            row = cursor.fetchone()
+
+            if row:
+                stats = {
+                    'total_users': row[0],
+                    'total_projects': row[1],
+                    'public_projects': row[2],
+                    'total_suggestions': row[3],
+                    'new_suggestions': row[4],
+                }
+            else:
+                raise RuntimeError("Функция fn_get_admin_statistics не вернула данных")
+
+    except Exception as e:
+        # Fallback на ORM при ошибке БД
+        from django.contrib.auth.models import User
+        from .models import Project, Suggestion
+
+        stats = {
+            'total_users': User.objects.count(),
+            'total_projects': Project.objects.count(),
+            'public_projects': Project.objects.filter(privacy='public').count(),
+            'total_suggestions': Suggestion.objects.count(),
+            'new_suggestions': Suggestion.objects.filter(status='new').count(),
+        }
+        # Логируем ошибку для отладки
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Использован fallback ORM для статистики: {e}")
+
     return render(request, 'admin_panel/dashboard.html', {'stats': stats})
+
+
+@superuser_required
+def admin_maintenance(request):
+    """Запуск процедуры очистки данных"""
+    if request.method == 'POST':
+        with connection.cursor() as cursor:
+            cursor.execute('CALL proc_purge_soft_deleted()')
+        messages.success(request, "Процедура очистки старых данных успешно выполнена.")
+        return HttpResponseRedirect(reverse('admin_panel:admin_dashboard'))
+
+    return render(request, 'admin_panel/maintenance.html')
 
 @superuser_required
 def admin_projects(request):
@@ -645,7 +747,7 @@ class CommentCreateView(LoginRequiredMixin, CreateView):
     """Создание комментария к посту"""
     model = Comment
     form_class = CommentForm
-    template_name = 'coverse_app/post_comments.html'
+    template_name = 'coverse_app/post_detail.html'
 
     def form_valid(self, form):
         form.instance.post = get_object_or_404(Post, pk=self.kwargs['post_pk'])
@@ -653,7 +755,7 @@ class CommentCreateView(LoginRequiredMixin, CreateView):
         return super().form_valid(form)
 
     def get_success_url(self):
-        return reverse('coverse_app:post_comments', kwargs={'post_pk': self.kwargs['post_pk']})
+        return reverse('coverse_app:post_detail', kwargs={'post_pk': self.kwargs['post_pk']})
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -661,7 +763,7 @@ class CommentCreateView(LoginRequiredMixin, CreateView):
         context['post'] = post
         context['project'] = post.section.project
         context['section'] = post.section
-        context['comments'] = post.comments.filter(parent__isnull=True).select_related(
+        context['detail'] = post.detail.filter(parent__isnull=True).select_related(
             'author', 'author__profile'
         ).prefetch_related(
             'replies__author', 'replies__author__profile'
@@ -675,7 +777,7 @@ class ReplyCreateView(LoginRequiredMixin, CreateView):
     """Ответ на комментарий"""
     model = Comment
     form_class = CommentForm
-    template_name = 'coverse_app/post_comments.html'
+    template_name = 'coverse_app/post_detail.html'
 
     def form_valid(self, form):
         form.instance.post = get_object_or_404(Post, pk=self.kwargs['post_pk'])
@@ -684,7 +786,7 @@ class ReplyCreateView(LoginRequiredMixin, CreateView):
         return super().form_valid(form)
 
     def get_success_url(self):
-        return reverse('coverse_app:post_comments', kwargs={'post_pk': self.kwargs['post_pk']})
+        return reverse('coverse_app:post_detail', kwargs={'post_pk': self.kwargs['post_pk']})
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -692,7 +794,7 @@ class ReplyCreateView(LoginRequiredMixin, CreateView):
         context['post'] = post
         context['project'] = post.section.project
         context['section'] = post.section
-        context['comments'] = post.comments.filter(parent__isnull=True).select_related(
+        context['detail'] = post.detail.filter(parent__isnull=True).select_related(
             'author', 'author__profile'
         ).prefetch_related(
             'replies__author', 'replies__author__profile'
@@ -702,10 +804,10 @@ class ReplyCreateView(LoginRequiredMixin, CreateView):
         return context
 
 
-class PostCommentsView(DetailView):
+class PostdetailView(DetailView):
     """Страница комментариев к посту"""
     model = Post
-    template_name = 'coverse_app/post_comments.html'
+    template_name = 'coverse_app/post_detail.html'
     context_object_name = 'post'
     pk_url_kwarg = 'post_pk'
 
@@ -717,13 +819,13 @@ class PostCommentsView(DetailView):
         post = self.object
 
         # Загружаем только корневые комментарии (без родителя)
-        comments = post.comments.filter(parent__isnull=True).select_related(
+        detail = post.detail.filter(parent__isnull=True).select_related(
             'author', 'author__profile'
         ).prefetch_related(
             'replies__author', 'replies__author__profile'
         ).order_by('-created_at')
 
-        context['comments'] = comments
+        context['detail'] = detail
         context['comment_form'] = CommentForm()
         context['title'] = f'Комментарии к посту: {post.title or "Без названия"}'
         context['project'] = post.section.project
@@ -758,7 +860,7 @@ def hide_comment_with_reason(request, comment_id):
 
             messages.success(request, "Комментарий скрыт модерацией.")
             return HttpResponseRedirect(
-                reverse('coverse_app:post_comments', kwargs={'post_pk': comment.post.id})
+                reverse('coverse_app:post_detail', kwargs={'post_pk': comment.post.id})
             )
     else:
         form = ModerationReasonForm()
@@ -767,8 +869,371 @@ def hide_comment_with_reason(request, comment_id):
         'form': form,
         'title': f'Скрыть комментарий',
         'action_url': reverse('admin_panel:hide_comment_with_reason', kwargs={'comment_id': comment_id}),
-        'cancel_url': reverse('coverse_app:post_comments', kwargs={'post_pk': comment.post.id}),
+        'cancel_url': reverse('coverse_app:post_detail', kwargs={'post_pk': comment.post.id}),
     })
+
+from django.core.exceptions import PermissionDenied
+from django.db import transaction
+import mimetypes
+
+
+class SuggestionCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
+    """Создание предложения к посту"""
+    model = Suggestion
+    form_class = SuggestionForm
+    template_name = 'coverse_app/suggestion_form.html'
+
+    def test_func(self):
+        post = get_object_or_404(Post, pk=self.kwargs['post_pk'])
+        # Нельзя создавать предложение к своему посту
+        return post.section.project.author != self.request.user
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['post'] = get_object_or_404(Post, pk=self.kwargs['post_pk'])
+        context['attachment_form'] = SuggestionAttachmentForm()
+        context['title'] = 'Предложить идею'
+        return context
+
+    def form_valid(self, form):
+        post = get_object_or_404(Post, pk=self.kwargs['post_pk'])
+        form.instance.post = post
+        form.instance.author = self.request.user
+
+        response = super().form_valid(form)
+        suggestion = self.object
+
+        # Обработка вложений
+        attachment_form = SuggestionAttachmentForm(self.request.POST, self.request.FILES)
+        if attachment_form.is_valid():
+            files = self.request.FILES.getlist('attachments')
+            if len(files) > 5:
+                form.add_error(None, "Можно загрузить не более 5 файлов.")
+                return self.form_invalid(form)
+
+            for f in files:
+                SuggestionAttachment.objects.create(
+                    suggestion=suggestion,
+                    file=f
+                )
+
+        messages.success(self.request, "Ваше предложение отправлено!")
+        return response
+
+    def get_success_url(self):
+        return reverse('coverse_app:post_detail', kwargs={'post_pk': self.kwargs['post_pk']})
+
+
+class PostSuggestionsListView(DetailView):
+    """Публичный список предложений к посту"""
+    model = Post
+    template_name = 'coverse_app/post_suggestions_list.html'
+    context_object_name = 'post'
+    pk_url_kwarg = 'post_pk'
+
+    def get_queryset(self):
+        return Post.objects.select_related('section__project__author')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        post = self.object
+
+        # ВСЕ предложения (включая отклонённые) для публичного просмотра
+        suggestions = post.suggestions.filter(
+            visibility='public'
+        ).select_related('author', 'author__profile')
+
+        # Фильтрация по статусу (по умолчанию - новые)
+        status_filter = self.request.GET.get('status', 'new')
+        if status_filter and status_filter in dict(Suggestion.STATUS_CHOICES):
+            suggestions = suggestions.filter(status=status_filter)
+        else:
+            status_filter = 'new'
+
+        # Фильтрация по типу
+        suggestion_type = self.request.GET.get('type')
+        if suggestion_type and suggestion_type in dict(Suggestion.SUGGESTION_TYPE_CHOICES):
+            suggestions = suggestions.filter(suggestion_type=suggestion_type)
+
+        # Сортировка
+        sort_by = self.request.GET.get('sort', '-created_at')
+        if sort_by in ['created_at', '-created_at', 'suggestion_type', '-suggestion_type']:
+            suggestions = suggestions.order_by(sort_by)
+
+        context['suggestions'] = suggestions
+        context['title'] = f'Предложения к посту: {post.title or "Без названия"}'
+        context['suggestion_types'] = Suggestion.SUGGESTION_TYPE_CHOICES
+        context['status_choices'] = Suggestion.STATUS_CHOICES
+        context['current_type'] = suggestion_type
+        context['current_status'] = status_filter
+        context['current_sort'] = sort_by
+        return context
+
+
+class ProjectSuggestionsView(LoginRequiredMixin, UserPassesTestMixin, ListView):
+    """Список предложений к постам проекта (для автора проекта)"""
+    model = Suggestion
+    template_name = 'coverse_app/project_suggestions.html'
+    context_object_name = 'suggestions'
+    paginate_by = 20
+
+    def test_func(self):
+        project = get_object_or_404(Project, pk=self.kwargs['project_pk'])
+        return project.author == self.request.user
+
+    def get_queryset(self):
+        project = get_object_or_404(Project, pk=self.kwargs['project_pk'])
+        post_ids = Post.objects.filter(section__project=project).values_list('id', flat=True)
+
+        # Только новые предложения
+        suggestions = Suggestion.objects.filter(
+            post__id__in=post_ids,
+            status='new'
+        ).select_related(
+            'post', 'post__section', 'author', 'author__profile'
+        ).order_by('-created_at')
+
+        # Фильтр по статусу
+        status = self.request.GET.get('status')
+        if status and status in dict(Suggestion.STATUS_CHOICES):
+            suggestions = Suggestion.objects.filter(
+                post__id__in=post_ids,
+                status=status
+            ).select_related(
+                'post', 'post__section', 'author', 'author__profile'
+            ).order_by('-created_at')
+
+        return suggestions
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['project'] = get_object_or_404(Project, pk=self.kwargs['project_pk'])
+        context['title'] = f'Предложения к проекту: {context["project"].title}'
+        context['status_choices'] = Suggestion.STATUS_CHOICES
+        context['current_status'] = self.request.GET.get('status', 'new')
+        return context
+
+
+class SuggestionDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
+    """Детальный просмотр предложения (для автора поста)"""
+    model = Suggestion
+    template_name = 'coverse_app/suggestion_detail.html'
+    context_object_name = 'suggestion'
+    pk_url_kwarg = 'suggestion_pk'
+
+    def test_func(self):
+        suggestion = get_object_or_404(Suggestion, pk=self.kwargs['suggestion_pk'])
+        return suggestion.post.section.project.author == self.request.user
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        suggestion = self.object
+
+        # Отметить как прочитанное
+        suggestion.mark_as_read()
+
+        context['post'] = suggestion.post
+        context['project'] = suggestion.post.section.project
+        context['response_form'] = SuggestionResponseForm()
+        context['title'] = 'Предложение'
+        return context
+
+
+class SuggestionResponseView(LoginRequiredMixin, UserPassesTestMixin, View):
+    """Ответ на предложение (Принять/Отклонить)"""
+
+    def test_func(self):
+        suggestion = get_object_or_404(Suggestion, pk=self.kwargs['suggestion_pk'])
+        return suggestion.post.section.project.author == self.request.user
+
+    def post(self, request, *args, **kwargs):
+        suggestion = get_object_or_404(Suggestion, pk=self.kwargs['suggestion_pk'])
+        form = SuggestionResponseForm(request.POST)
+
+        if form.is_valid():
+            action = form.cleaned_data['action']
+
+            with transaction.atomic():
+                if action == 'accept':
+                    # ← ИСПРАВЛЕНО: добавляем post_pk!
+                    return HttpResponseRedirect(
+                        reverse('coverse_app:suggestion_accept_edit',
+                                kwargs={
+                                    'suggestion_pk': suggestion.pk,
+                                    'post_pk': suggestion.post.pk  # ← ДОБАВЛЕНО
+                                })
+                    )
+                else:
+                    # Отклонить
+                    suggestion.status = 'rejected'
+                    suggestion.reviewed_at = timezone.now()
+                    suggestion.rejection_reason = form.cleaned_data.get('rejection_reason', '')
+                    suggestion.save(update_fields=['status', 'reviewed_at', 'rejection_reason'])
+
+                    # Создать вклад для автора предложения
+                    ContributionCredit.objects.get_or_create(
+                        project=suggestion.post.section.project,
+                        contributor=suggestion.author,
+                        credit_type='suggestion_accepted',
+                        defaults={'description': f'Предложение к посту "{suggestion.post.title}" (отклонено)'}
+                    )
+
+                    messages.success(request, "Предложение отклонено.")
+
+        return HttpResponseRedirect(
+            reverse('coverse_app:project_suggestions',
+                    kwargs={'project_pk': suggestion.post.section.project.pk})
+        )
+
+
+class SuggestionAcceptEditView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
+    """Редактирование поста при принятии предложения"""
+    model = Post
+    form_class = PostEditWithSuggestionForm
+    template_name = 'coverse_app/post_edit_with_suggestion.html'
+    pk_url_kwarg = 'post_pk'
+
+    def test_func(self):
+        post = get_object_or_404(Post, pk=self.kwargs['post_pk'])
+        return post.section.project.author == self.request.user
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        suggestion = get_object_or_404(Suggestion, pk=self.kwargs['suggestion_pk'])
+        context['suggestion'] = suggestion
+        context['project'] = suggestion.post.section.project
+        context['title'] = 'Редактировать пост (принятие предложения)'
+        return context
+
+    def form_valid(self, form):
+        post = self.object
+        suggestion = get_object_or_404(Suggestion, pk=self.kwargs['suggestion_pk'])
+
+        # Обновляем пост (триггер автоматически создаст лог)
+        post.title = form.cleaned_data['title']
+        post.content = form.cleaned_data['content']
+        post.status = form.cleaned_data['status']
+        post.save()
+
+        # Обновляем предложение
+        suggestion.status = 'accepted'
+        suggestion.reviewed_at = timezone.now()
+
+        # Получаем последнюю запись лога (созданную триггером)
+        latest_log = PostEditLog.objects.filter(post=post).order_by('-edited_at').first()
+        if latest_log:
+            # Обновляем запись лога: добавляем связь с предложением и редактора
+            latest_log.suggestion = suggestion
+            latest_log.editor = self.request.user
+            latest_log.change_summary = form.cleaned_data.get('change_summary', '')
+            latest_log.save()
+
+            suggestion.accepted_post_version = latest_log
+
+        suggestion.save(update_fields=['status', 'reviewed_at', 'accepted_post_version'])
+
+        # Создаём вклад для автора предложения
+        ContributionCredit.objects.get_or_create(
+            project=post.section.project,
+            contributor=suggestion.author,
+            credit_type='suggestion_accepted',
+            defaults={'description': f'Принятое предложение к посту "{post.title}"'}
+        )
+
+        messages.success(self.request, "Предложение принято! Пост обновлён.")
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('coverse_app:project_suggestions',
+                       kwargs={'project_pk': self.object.section.project.pk})
+
+
+def download_suggestion_attachment(request, attachment_pk):
+    """Скачивание вложения к предложению"""
+    attachment = get_object_or_404(SuggestionAttachment, pk=attachment_pk)
+    suggestion = attachment.suggestion
+
+    # Проверка доступа
+    user = request.user
+    if not suggestion.can_view_by_user(user):
+        raise PermissionDenied
+
+    response = FileResponse(attachment.file.open(), as_attachment=True)
+    return response
+
+
+class PostHistoryView(LoginRequiredMixin, UserPassesTestMixin, ListView):
+    """История изменений поста"""
+    model = PostEditLog
+    template_name = 'coverse_app/post_history.html'
+    context_object_name = 'edit_logs'
+    paginate_by = 10
+
+    def test_func(self):
+        post = get_object_or_404(Post, pk=self.kwargs['post_pk'])
+        # Доступ: автор проекта или суперпользователь
+        return (post.section.project.author == self.request.user or
+                self.request.user.is_superuser)
+
+    def get_queryset(self):
+        post = get_object_or_404(Post, pk=self.kwargs['post_pk'])
+        return PostEditLog.objects.filter(
+            post=post
+        ).select_related(
+            'editor', 'suggestion', 'suggestion__author'
+        ).order_by('-edited_at')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['post'] = get_object_or_404(Post, pk=self.kwargs['post_pk'])
+        context['project'] = context['post'].section.project
+        context['title'] = f'История изменений: {context["post"].title or "Без названия"}'
+        return context
+
+
+class PostDetailView(DetailView):
+    """Детальная страница поста (ранее post_comments)"""
+    model = Post
+    template_name = 'coverse_app/post_detail.html'
+    context_object_name = 'post'
+    pk_url_kwarg = 'post_pk'
+
+    def get_queryset(self):
+        return Post.objects.select_related('section__project__author')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        post = self.object
+
+        # Комментарии
+        comments = post.comments.filter(parent__isnull=True).select_related(
+            'author', 'author__profile'
+        ).prefetch_related(
+            'replies__author', 'replies__author__profile'
+        ).order_by('-created_at')
+
+        context['comments'] = comments
+        context['comment_form'] = CommentForm()
+        context['title'] = f'Пост: {post.title or "Без названия"}'
+        context['project'] = post.section.project
+        context['section'] = post.section
+
+        # Проверка: может ли пользователь создать предложение
+        context['can_suggest'] = (
+                self.request.user.is_authenticated and
+                self.request.user != post.section.project.author
+        )
+
+        # Проверка: может ли пользователь видеть историю
+        context['can_view_history'] = (
+                self.request.user.is_authenticated and
+                (self.request.user == post.section.project.author or
+                 self.request.user.is_superuser)
+        )
+
+        return context
+
+
 
 
 

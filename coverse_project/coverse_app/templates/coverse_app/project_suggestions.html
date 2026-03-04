@@ -1,10 +1,114 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
-</head>
-<body>
-$END$
-</body>
-</html>
+{% extends 'coverse_app/base.html' %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'coverse_app:my_projects' %}">Мои проекты</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_detail' project.pk %}">{{ project.title }}</a></li>
+        <li class="breadcrumb-item active">Предложения</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>📬 Предложения к проекту</h1>
+    <div>
+        <span class="badge bg-primary">{{ suggestions.count }} новых</span>
+    </div>
+</div>
+
+<!-- Фильтр по статусу -->
+<div class="mb-3">
+    <form method="get" class="d-flex gap-2">
+        <select name="status" class="form-select" onchange="this.form.submit()">
+            {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>
+                    {{ label }}
+                </option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+
+{% if suggestions %}
+    <div class="list-group">
+    {% for suggestion in suggestions %}
+        <div class="list-group-item list-group-item-action">
+            <div class="d-flex w-100 justify-content-between">
+                <div>
+                    <h5 class="mb-1">
+                        {% if suggestion.suggestion_type == 'correction' %}
+                            <span class="badge bg-warning">Исправление</span>
+                        {% elif suggestion.suggestion_type == 'new_idea' %}
+                            <span class="badge bg-success">Новая идея</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Другое</span>
+                        {% endif %}
+                        {{ suggestion.post.title|default:"Пост без названия" }}
+                    </h5>
+                    <p class="mb-1 text-muted">
+                        <small>От: {{ suggestion.author.username }} • 
+                        {{ suggestion.created_at|date:"d.m.Y H:i" }}</small>
+                    </p>
+                    <p class="mb-1">
+                        {{ suggestion.suggestion_text|truncatechars:150 }}
+                    </p>
+                </div>
+                <div class="text-end">
+                    {% if not suggestion.read_at %}
+                        <span class="badge bg-danger">Новое</span>
+                    {% endif %}
+                    {% if suggestion.attachments.exists %}
+                        <span class="badge bg-info">📎 {{ suggestion.attachments.count }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="mt-2">
+                <a href="{% url 'coverse_app:suggestion_detail' suggestion.pk %}" 
+                   class="btn btn-primary btn-sm">
+                    {% if suggestion.read_at %}Показать полностью{% else %}Читать{% endif %}
+                </a>
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+
+    <!-- Пагинация -->
+    {% if is_paginated %}
+        <nav aria-label="Пагинация" class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1&status={{ current_status }}">Первая</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}&status={{ current_status }}">←</a>
+                    </li>
+                {% endif %}
+                
+                <li class="page-item active">
+                    <span class="page-link">{{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+                </li>
+                
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}&status={{ current_status }}">→</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&status={{ current_status }}">Последняя</a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+{% else %}
+    <div class="alert alert-info">
+        Нет предложений с выбранным статусом.
+    </div>
+{% endif %}
+
+<div class="mt-4">
+    <a href="{% url 'coverse_app:project_detail' project.pk %}" class="btn btn-secondary">
+        ← Назад к проекту
+    </a>
+</div>
+{% endblock %}

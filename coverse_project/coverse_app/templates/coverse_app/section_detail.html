@@ -1,39 +1,45 @@
-<!-- templates/coverse_app/section_detail.html -->
 {% extends 'coverse_app/base.html' %}
 
 {% block content %}
-<div class="container mt-4">
-    <nav aria-label="breadcrumb">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_list' %}">Проекты</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_detail' project.pk %}">{{ project.title }}</a></li>
-            <li class="breadcrumb-item active" aria-current="page">{{ section.get_section_type_display }}: {{ section.title }}</li>
-        </ol>
-    </nav>
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_list' %}">Проекты</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'coverse_app:project_detail' project.pk %}">{{ project.title }}</a></li>
+        <li class="breadcrumb-item active">{{ section.get_section_type_display }}: {{ section.title }}</li>
+    </ol>
+</nav>
 
-    <h2>{{ section.get_section_type_display }}: {{ section.title }}</h2>
+<h2>{{ section.get_section_type_display }}: {{ section.title }}</h2>
+{% if section.description %}
+    <p class="text-muted">{{ section.description }}</p>
+{% endif %}
 
-    {% if section.description %}
-        <p class="lead">{{ section.description }}</p>
-    {% endif %}
+{% if can_edit %}
+    <div class="mb-3">
+        <a href="{% url 'coverse_app:post_create' section.pk %}" class="btn btn-success">
+            + Добавить пост
+        </a>
+    </div>
+{% endif %}
 
-    {% if can_edit %}
-        <a href="{% url 'coverse_app:post_create' section.pk %}" class="btn btn-primary mb-3">+ Добавить пост</a>
-    {% endif %}
-
-    {% if posts %}
-        <div class="list-group">
-            {% for post in posts %}
-                <div class="list-group-item">
+{% if posts %}
+    <div class="row">
+    {% for post in posts %}
+        <div class="col-12 mb-4">
+            <div class="card {% if post.is_deleted or post.moderation_deleted %}bg-light{% endif %}">
+                <div class="card-body">
                     {% if post.is_deleted or post.moderation_deleted %}
-                        <div class="alert alert-secondary">
-                            <h5>{{ post.title|default:"Без заголовка" }}</h5>
-                            {% if post.is_deleted %}
-                                <p class="mb-0">🗑️ Этот пост был удалён автором.</p>
-                            {% elif post.moderation_deleted %}
-                                <p class="mb-0">🚫 Этот пост был скрыт модерацией.</p>
-                            {% endif %}
-                            <small>Опубликовано: {{ post.created_at|date:"d.m.Y H:i" }}
+                        <h5 class="card-title text-muted">
+                            {{ post.title|default:"Без заголовка" }}
+                        </h5>
+                        {% if post.is_deleted %}
+                            <div class="alert alert-warning">🗑️ Этот пост был удалён автором.</div>
+                        {% elif post.moderation_deleted %}
+                            <div class="alert alert-danger">🚫 Этот пост был скрыт модерацией.</div>
+                        {% endif %}
+                        <p class="card-text">
+                            <small class="text-muted">
+                                Опубликовано: {{ post.created_at|date:"d.m.Y H:i" }}
                                 {% if post.deleted_at %}
                                     • Удалён: {{ post.deleted_at|date:"d.m.Y H:i" }}
                                 {% endif %}
@@ -41,48 +47,60 @@
                                     • Скрыт модерацией: {{ post.moderation_deleted_at|date:"d.m.Y H:i" }}
                                 {% endif %}
                             </small>
-                        </div>
+                        </p>
                     {% else %}
-                        <h5>{{ post.title|default:"Без заголовка" }}</h5>
-                        <div class="mb-3">{{ post.content|linebreaks }}</div>
+                        <!-- КЛИКАБЕЛЬНЫЙ БЛОК ПОСТА -->
+                        <a href="{% url 'coverse_app:post_detail' post.pk %}" class="text-decoration-none text-dark">
+                            <h5 class="card-title">{{ post.title|default:"Без заголовка" }}</h5>
+                            <p class="card-text">{{ post.content|linebreaks|truncatewords:50 }}</p>
+                        </a>
 
                         {% if post.images.exists %}
-                            <div class="row">
-                                {% for img in post.images.all %}
-                                    <div class="col-md-4 mb-3">
-                                        <img src="{{ img.image.url }}" class="img-fluid" alt="Изображение">
-                                        {% if img.caption %}
-                                            <small class="text-muted d-block mt-1">{{ img.caption }}</small>
-                                        {% endif %}
-                                    </div>
+                            <div class="mb-2">
+                                {% for img in post.images.all|slice:":3" %}
+                                    <img src="{{ img.image.url }}" class="img-thumbnail" style="max-height: 100px;">
                                 {% endfor %}
                             </div>
                         {% endif %}
 
-                        <small class="text-muted">Опубликовано: {{ post.created_at|date:"d.m.Y H:i" }}</small>
-
-                        <!-- Кнопка комментариев (всегда видна для аутентифицированных пользователей) -->
-                        <div class="mt-2">
-                            {% if user.is_authenticated %}
-                                <a href="{% url 'coverse_app:post_comments' post.pk %}"
-                                   class="btn btn-sm btn-outline-info">
-                                    💬 Комментарии ({{ post.comments.count }})
-                                    {% if post.comments.count == 0 %}
-                                        <span class="ms-2">+ Оставить комментарий</span>
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <small class="text-muted">
+                                Опубликовано: {{ post.created_at|date:"d.m.Y H:i" }}
+                            </small>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% if user.is_authenticated %}
+                                    <a href="{% url 'coverse_app:post_detail' post.pk %}"
+                                       class="btn btn-outline-primary btn-sm">
+                                        💬 Комментарии ({{ post.comments.count }})
+                                    </a>
+                                    {% if user != project.author %}
+                                        <a href="{% url 'coverse_app:suggestion_create' post.pk %}"
+                                           class="btn btn-outline-success btn-sm">
+                                            💡 Есть идея!
+                                        </a>
                                     {% endif %}
-                                </a>
-                            {% else %}
-                                <span class="btn btn-sm btn-outline-info disabled">
-                                    💬 Комментарии ({{ post.comments.count }})
-                                </span>
-                            {% endif %}
+                                    <a href="{% url 'coverse_app:post_suggestions_list' post.pk %}"
+                                       class="btn btn-outline-info btn-sm">
+                                        📋 Предложения
+                                    </a>
+                                    {% if user == project.author or user.is_superuser %}
+                                        <a href="{% url 'coverse_app:post_history' post.pk %}"
+                                           class="btn btn-outline-secondary btn-sm">
+                                            📜 История
+                                        </a>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">
+                                        💬 Комментарии ({{ post.comments.count }})
+                                    </span>
+                                {% endif %}
+                            </div>
                         </div>
 
-                        <!-- Кнопка модерации (только для администратора) -->
                         {% if user.is_superuser %}
                             <div class="mt-2">
                                 <a href="{% url 'admin_panel:hide_post_with_reason' post.id %}"
-                                   class="btn btn-sm btn-danger">
+                                   class="btn btn-danger btn-sm">
                                     🚫 Скрыть пост
                                 </a>
                             </div>
@@ -90,26 +108,34 @@
                     {% endif %}
 
                     {% if can_edit and not post.is_deleted and not post.moderation_deleted %}
-                        <form method="post" action="{% url 'coverse_app:post_delete' post.pk %}" class="d-inline">
+                        <form method="post" action="{% url 'coverse_app:post_delete' post.pk %}"
+                              class="d-inline mt-2"
+                              onsubmit="return confirm('Вы уверены?');">
                             {% csrf_token %}
-                            <button type="submit" class="btn btn-sm btn-outline-danger"
-                                    onclick="return confirm('Удалить пост?')">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">
                                 Удалить пост
                             </button>
                         </form>
                     {% endif %}
                 </div>
-            {% endfor %}
+            </div>
         </div>
-    {% else %}
-        <div class="alert alert-info">
-            В этом разделе пока нет опубликованных постов.
-            {% if can_edit %}
-                <a href="{% url 'coverse_app:post_create' section.pk %}" class="btn btn-primary mt-2">Создать первый пост</a>
-            {% endif %}
-        </div>
-    {% endif %}
+    {% endfor %}
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        В этом разделе пока нет опубликованных постов.
+        {% if can_edit %}
+            <a href="{% url 'coverse_app:post_create' section.pk %}" class="btn btn-success mt-2">
+                Создать первый пост
+            </a>
+        {% endif %}
+    </div>
+{% endif %}
 
-    <a href="{% url 'coverse_app:project_detail' project.pk %}" class="btn btn-secondary mt-3">← Назад к проекту</a>
+<div class="mt-4">
+    <a href="{% url 'coverse_app:project_detail' project.pk %}" class="btn btn-secondary">
+        ← Назад к проекту
+    </a>
 </div>
 {% endblock %}
